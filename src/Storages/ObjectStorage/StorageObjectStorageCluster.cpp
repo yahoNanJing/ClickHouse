@@ -161,7 +161,7 @@ RemoteQueryExecutor::Extension StorageObjectStorageCluster::getTaskIteratorExten
         if (archive_object_info)
             return archive_object_info->getPathToArchive();
 
-        return object_info->getPath();
+        return object_info->toJsonWithType();
     });
     return RemoteQueryExecutor::Extension{ .task_iterator = std::move(callback) };
 }

@@ -4,6 +4,10 @@
 
 #if USE_AVRO
 
+#include <Poco/JSON/Object.h>
+#include <Poco/JSON/Parser.h>
+#include <Poco/JSON/Stringifier.h>
+
 #include <Storages/ObjectStorage/DataLakes/Iceberg/SchemaProcessor.h>
 #include <Storages/ObjectStorage/DataLakes/Iceberg/AvroForIcebergDeserializer.h>
 #include <Storages/KeyDescription.h>
@@ -11,6 +15,7 @@
 #include <Core/Field.h>
 
 #include <cstdint>
+#include <sstream>
 #include <variant>
 
 namespace Iceberg
@@ -57,6 +62,9 @@ struct ManifestFileEntry
     DataFileEntry file;
     DB::Row partition_key_value;
     std::unordered_map<Int32, ColumnInfo> columns_infos;
+
+    std::string toJson() const;
+    void fromJson(const std::string & json_str);
 };
 
 /**

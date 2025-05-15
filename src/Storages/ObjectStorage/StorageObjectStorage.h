@@ -239,7 +239,7 @@ public:
         throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Method updateAndGetCurrentSchema is not supported by storage {}", getEngineName());
     }
 
-    virtual bool hasDataTransformer() const { return false; }
+    virtual bool hasDataTransformer(const ObjectInfoPtr & /*object_info*/) const { return false; }
     virtual std::shared_ptr<ISimpleTransform> getDataTransformer(
         const ObjectInfoPtr & /*object_info*/,
         const Block & /*header*/,

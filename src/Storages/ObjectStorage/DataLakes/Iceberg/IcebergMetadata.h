@@ -26,6 +26,8 @@ namespace DB
 
 struct IcebergDataObjectInfo : public RelativePathWithMetadata
 {
+    IcebergDataObjectInfo() = default;
+
     explicit IcebergDataObjectInfo(
         Iceberg::ManifestFileEntry data_object_,
         std::optional<ObjectMetadata> metadata_ = std::nullopt,
@@ -40,11 +42,15 @@ struct IcebergDataObjectInfo : public RelativePathWithMetadata
         }
     }
 
-    const Iceberg::ManifestFileEntry data_object;
-    std::vector<Iceberg::ManifestFileEntry> position_deletes_objects;
-
     // Return the path in the Iceberg metadata
     std::string getIcebergDataPath() const { return data_object.file.file_path_key; }
+
+    virtual std::string toJson() const override;
+    virtual void fromJson(const std::string & json_str) override;
+    virtual std::string toJsonWithType() const override;
+
+    Iceberg::ManifestFileEntry data_object;
+    std::vector<Iceberg::ManifestFileEntry> position_deletes_objects;
 };
 using IcebergDataObjectInfoPtr = std::shared_ptr<IcebergDataObjectInfo>;
 
@@ -96,7 +102,7 @@ public:
             : nullptr;
     }
 
-    bool hasDataTransformer() const override { return !getPositionDeletesFiles().empty(); }
+    bool hasDataTransformer(const ObjectInfoPtr & /*object_info*/) const override;
 
     std::shared_ptr<ISimpleTransform> getDataTransformer(
         const ObjectInfoPtr & /* object_info */,

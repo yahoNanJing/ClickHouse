@@ -9,6 +9,11 @@
 #include <IO/ReadBufferFromString.h>
 #include <IO/ReadHelpers.h>
 
+#include <Poco/JSON/Object.h>
+#include <Poco/JSON/Array.h>
+#include <Poco/JSON/Parser.h>
+#include <Poco/JSON/Stringifier.h>
+
 #include <Storages/ObjectStorage/DataLakes/Common.h>
 #include <Storages/ObjectStorage/StorageObjectStorageSource.h>
 #include <Storages/ObjectStorage/StorageObjectStorageSettings.h>
@@ -21,6 +26,7 @@
 #include <Storages/ObjectStorage/DataLakes/Iceberg/ManifestFilesPruning.h>
 #include <Storages/ObjectStorage/DataLakes/Iceberg/ManifestFile.h>
 #include <Storages/ObjectStorage/DataLakes/Iceberg/PositionDeleteTransform.h>
+#include <Storages/ObjectStorage/ObjectInfoFactory.h>
 
 #include <Common/logger_useful.h>
 #include <Common/ProfileEvents.h>
@@ -898,23 +904,103 @@ ObjectIterator IcebergMetadata::iterate(
     return std::make_shared<IcebergKeysIterator>(getDataFiles(filter_dag), getPositionDeletesFiles(), object_storage, callback);
 }
 
+bool IcebergMetadata::hasDataTransformer(const ObjectInfoPtr & object_info) const
+{
+    auto iceberg_object_info = std::dynamic_pointer_cast<IcebergDataObjectInfo>(object_info);
+    if (!iceberg_object_info)
+        return false;
+
+    return !iceberg_object_info->position_deletes_objects.empty();
+}
+
 std::shared_ptr<ISimpleTransform> IcebergMetadata::getDataTransformer(
     const ObjectInfoPtr & object_info,
     const Block & header,
     const std::optional<FormatSettings> & format_settings,
     ContextPtr context_) const
 {
-    auto configuration_ptr = configuration.lock();
-
     auto iceberg_object_info = std::dynamic_pointer_cast<IcebergDataObjectInfo>(object_info);
+    if (!iceberg_object_info)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "The object info is not IcebergDataObjectInfo");
+
+    String delete_object_format;
+    String delete_object_compression_method;
+    {
+        auto configuration_ptr = configuration.lock();
+        if (!configuration_ptr)
+        {
+            delete_object_format = "parquet";
+            delete_object_compression_method = "auto";
+
+            LOG_WARNING(
+                log,
+                "Configuration is expired. Will use {} as the format and {} as the compression method for the delete objects",
+                delete_object_format,
+                delete_object_compression_method);
+        }
+
+        delete_object_format = configuration_ptr->format;
+        delete_object_compression_method = configuration_ptr->compression_method;
+    }
+
     return std::make_shared<IcebergBitmapPositionDeleteTransform>(
-        header,
-        iceberg_object_info,
-        object_storage,
-        format_settings,
-        context_,
-        configuration_ptr->format,
-        configuration_ptr->compression_method);
+        header, iceberg_object_info, object_storage, format_settings, context_, delete_object_format, delete_object_compression_method);
+}
+
+std::string IcebergDataObjectInfo::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("base_object_info", ObjectInfo::toJson());
+    json.set("data_object", data_object.toJson());
+
+    Poco::JSON::Array position_deletes_array;
+    for (const auto & position_delete : position_deletes_objects)
+    {
+        position_deletes_array.add(position_delete.toJson());
+    }
+    json.set("position_deletes_objects", position_deletes_array);
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void IcebergDataObjectInfo::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    ObjectInfo::fromJson(json->getValue<std::string>("base_object_info"));
+    data_object.fromJson(json->getValue<std::string>("data_object"));
+
+    position_deletes_objects.clear();
+    if (json->has("position_deletes_objects"))
+    {
+        auto position_deletes_array = json->getArray("position_deletes_objects");
+        for (size_t i = 0; i < position_deletes_array->size(); ++i)
+        {
+            Iceberg::ManifestFileEntry entry;
+            entry.fromJson(position_deletes_array->getElement<std::string>(i));
+            position_deletes_objects.push_back(entry);
+        }
+    }
+}
+
+std::string IcebergDataObjectInfo::toJsonWithType() const
+{
+    Poco::JSON::Object json;
+    json.set("type", "IcebergDataObjectInfo");
+    json.set("content", toJson());
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void registerIcebergObjectInfo(ObjectInfoFactory & factory)
+{
+    factory.registerObjectInfoType("IcebergDataObjectInfo", []() { return std::make_shared<IcebergDataObjectInfo>(); });
 }
 
 }

@@ -4,7 +4,9 @@
 #include <IO/WriteBufferFromString.h>
 #include <Common/FieldVisitorToString.h>
 #include <Common/FieldAccurateComparison.h>
-
+#include <Poco/JSON/Object.h>
+#include <Poco/JSON/Parser.h>
+#include <Poco/JSON/Stringifier.h>
 
 namespace DB
 {
@@ -12,6 +14,46 @@ namespace DB
 FieldRef::FieldRef(ColumnsWithTypeAndName * columns_, size_t row_idx_, size_t column_idx_)
     : Field((*(*columns_)[column_idx_].column)[row_idx_]), columns(columns_), row_idx(row_idx_), column_idx(column_idx_)
 {
+}
+
+std::string FieldRef::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("is_explicit", isExplicit());
+
+    if (isExplicit())
+    {
+        json.set("value", this->dump());
+    }
+    else
+    {
+        json.set("row_idx", row_idx);
+        json.set("column_idx", column_idx);
+        // Assuming `columns` is not serialized as it is a pointer to external data.
+    }
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void FieldRef::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    if (json->getValue<bool>("is_explicit"))
+    {
+        *this = DB::Field::restoreFromDump(json->getValue<std::string>("value"));
+        columns = nullptr;
+    }
+    else
+    {
+        row_idx = json->getValue<size_t>("row_idx");
+        column_idx = json->getValue<size_t>("column_idx");
+        columns = nullptr; // `columns` must be set externally as it cannot be serialized.
+    }
 }
 
 Range::Range(const FieldRef & point) /// NOLINT
@@ -359,6 +401,31 @@ String toString(const Hyperrectangle & x)
     }
 
     return str.str();
+}
+
+std::string Range::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("left", left.toJson());
+    json.set("right", right.toJson());
+    json.set("left_included", left_included);
+    json.set("right_included", right_included);
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void Range::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    left.fromJson(json->getValue<std::string>("left"));
+    right.fromJson(json->getValue<std::string>("right"));
+    left_included = json->getValue<bool>("left_included");
+    right_included = json->getValue<bool>("right_included");
 }
 
 }

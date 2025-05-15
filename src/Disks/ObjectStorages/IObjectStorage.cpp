@@ -7,7 +7,10 @@
 #include <Interpreters/Context.h>
 #include <Common/Exception.h>
 #include <Common/ObjectStorageKeyGenerator.h>
-
+#include <Poco/JSON/JSON.h>
+#include <Poco/JSON/Object.h>
+#include <Poco/JSON/Parser.h>
+#include <Poco/JSON/Stringifier.h>
 
 namespace DB
 {
@@ -16,6 +19,93 @@ namespace ErrorCodes
 {
     extern const int NOT_IMPLEMENTED;
     extern const int LOGICAL_ERROR;
+}
+
+std::string ObjectMetadata::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("size_bytes", size_bytes);
+    json.set("last_modified", last_modified.epochTime());
+    json.set("etag", etag);
+
+    Poco::JSON::Object attr_json;
+    for (const auto & [key, value] : attributes)
+    {
+        attr_json.set(key, value);
+    }
+    json.set("attributes", attr_json);
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void ObjectMetadata::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    size_bytes = json->getValue<uint64_t>("size_bytes");
+    last_modified = Poco::Timestamp(json->getValue<int64_t>("last_modified"));
+    etag = json->getValue<std::string>("etag");
+
+    if (json->has("attributes"))
+    {
+        auto attr_json = json->get("attributes").extract<Poco::JSON::Object::Ptr>();
+        for (const auto & [key, value] : *attr_json)
+        {
+            attributes[key] = value.toString();
+        }
+    }
+}
+
+std::string RelativePathWithMetadata::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("relative_path", relative_path);
+
+    if (metadata)
+    {
+        json.set("metadata", metadata->toJson());
+    }
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void RelativePathWithMetadata::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    relative_path = json->getValue<std::string>("relative_path");
+
+    if (json->has("metadata"))
+    {
+        if (!metadata)
+        {
+            metadata = std::make_optional<ObjectMetadata>();
+        }
+        metadata->fromJson(json->getValue<std::string>("metadata"));
+    }
+    else
+    {
+        metadata.reset();
+    }
+}
+
+std::string RelativePathWithMetadata::toJsonWithType() const
+{
+    Poco::JSON::Object json;
+    json.set("type", "SimpleObjectInfo");
+    json.set("content", toJson());
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
 }
 
 const MetadataStorageMetrics & IObjectStorage::getMetadataStorageMetrics() const

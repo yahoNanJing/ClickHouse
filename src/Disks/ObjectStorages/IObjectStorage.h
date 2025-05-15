@@ -62,9 +62,12 @@ struct ObjectMetadata
     Poco::Timestamp last_modified;
     std::string etag;
     ObjectAttributes attributes;
+
+    std::string toJson() const;
+    void fromJson(const std::string & json_str);
 };
 
-struct RelativePathWithMetadata
+struct RelativePathWithMetadata : public std::enable_shared_from_this<RelativePathWithMetadata>
 {
     String relative_path;
     std::optional<ObjectMetadata> metadata;
@@ -76,6 +79,25 @@ struct RelativePathWithMetadata
         , metadata(std::move(metadata_))
     {}
 
+    RelativePathWithMetadata(const RelativePathWithMetadata & other)
+        : relative_path(other.relative_path)
+        , metadata(other.metadata)
+    {
+    }
+
+    RelativePathWithMetadata & operator=(const RelativePathWithMetadata & other)
+    {
+        if (this != &other)
+        {
+            relative_path = other.relative_path;
+            metadata = other.metadata;
+        }
+        return *this;
+    }
+
+    RelativePathWithMetadata(RelativePathWithMetadata &&) noexcept = default;
+    RelativePathWithMetadata & operator=(RelativePathWithMetadata &&) noexcept = default;
+
     virtual ~RelativePathWithMetadata() = default;
 
     virtual std::string getFileName() const { return std::filesystem::path(relative_path).filename(); }
@@ -83,7 +105,13 @@ struct RelativePathWithMetadata
     virtual bool isArchive() const { return false; }
     virtual std::string getPathToArchive() const { throw Exception(ErrorCodes::LOGICAL_ERROR, "Not an archive"); }
     virtual size_t fileSizeInArchive() const { throw Exception(ErrorCodes::LOGICAL_ERROR, "Not an archive"); }
+
+    virtual std::string toJson() const;
+    virtual void fromJson(const std::string & json_str);
+    virtual std::string toJsonWithType() const;
 };
+
+std::shared_ptr<RelativePathWithMetadata> getObjectInfoFromJsonStr(const std::string & json_str);
 
 struct ObjectKeyWithMetadata
 {

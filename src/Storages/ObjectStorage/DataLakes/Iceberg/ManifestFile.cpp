@@ -119,6 +119,98 @@ constexpr const char * SUBCOLUMN_NULL_VALUE_COUNTS_NAME = "data_file.null_value_
 constexpr const char * SUBCOLUMN_LOWER_BOUNDS_NAME = "data_file.lower_bounds";
 constexpr const char * SUBCOLUMN_UPPER_BOUNDS_NAME = "data_file.upper_bounds";
 
+std::string ManifestFileEntry::toJson() const
+{
+    Poco::JSON::Object json;
+    json.set("status", static_cast<int>(status));
+    json.set("added_sequence_number", added_sequence_number);
+
+    Poco::JSON::Object file_json;
+    file_json.set("file_path_key", file.file_path_key);
+    file_json.set("file_name", file.file_name);
+    json.set("file", file_json);
+
+    Poco::JSON::Array partition_key_array;
+    for (const auto & field : partition_key_value)
+    {
+        partition_key_array.add(field.dump());
+    }
+    json.set("partition_key_value", partition_key_array);
+
+    Poco::JSON::Object columns_infos_json;
+    for (const auto & [column_id, column_info] : columns_infos)
+    {
+        Poco::JSON::Object column_info_json;
+        if (column_info.rows_count)
+            column_info_json.set("rows_count", *column_info.rows_count);
+        if (column_info.bytes_size)
+            column_info_json.set("bytes_size", *column_info.bytes_size);
+        if (column_info.nulls_count)
+            column_info_json.set("nulls_count", *column_info.nulls_count);
+        if (column_info.hyperrectangle)
+        {
+            column_info_json.set("hyperrectangle", column_info.hyperrectangle->toJson());
+        }
+
+        columns_infos_json.set(std::to_string(column_id), column_info_json);
+    }
+    json.set("columns_infos", columns_infos_json);
+
+    std::ostringstream oss;
+    Poco::JSON::Stringifier::stringify(json, oss);
+    return oss.str();
+}
+
+void ManifestFileEntry::fromJson(const std::string & json_str)
+{
+    Poco::JSON::Parser parser;
+    auto parsed = parser.parse(json_str);
+    auto json = parsed.extract<Poco::JSON::Object::Ptr>();
+
+    status = static_cast<ManifestEntryStatus>(json->getValue<int>("status"));
+    added_sequence_number = json->getValue<Int64>("added_sequence_number");
+
+    auto file_json = json->getObject("file");
+    file.file_path_key = file_json->getValue<std::string>("file_path_key");
+    file.file_name = file_json->getValue<std::string>("file_name");
+
+    auto partition_key_array = json->getArray("partition_key_value");
+    partition_key_value.clear();
+    for (size_t i = 0; i < partition_key_array->size(); ++i)
+    {
+        partition_key_value.push_back(DB::Field::restoreFromDump(partition_key_array->getElement<std::string>(i)));
+    }
+
+    auto columns_infos_json = json->getObject("columns_infos");
+    columns_infos.clear();
+    for (const auto & [key, value] : *columns_infos_json)
+    {
+        Int32 column_id = std::stoi(key);
+        auto column_info_json = value.extract<Poco::JSON::Object::Ptr>();
+        ColumnInfo column_info;
+        if (column_info_json->has("rows_count"))
+            column_info.rows_count = column_info_json->getValue<Int64>("rows_count");
+        if (column_info_json->has("bytes_size"))
+            column_info.bytes_size = column_info_json->getValue<Int64>("bytes_size");
+        if (column_info_json->has("nulls_count"))
+            column_info.nulls_count = column_info_json->getValue<Int64>("nulls_count");
+        if (column_info_json->has("hyperrectangle"))
+        {
+            DB::FieldRef field_ref;
+            if (!column_info.hyperrectangle)
+            {
+                column_info.hyperrectangle = std::make_optional<DB::Range>(field_ref);
+            }
+            column_info.hyperrectangle->fromJson(column_info_json->getValue<std::string>("hyperrectangle"));
+        }
+        else
+        {
+            column_info.hyperrectangle.reset();
+        }
+
+        columns_infos[column_id] = column_info;
+    }
+}
 
 const std::vector<ManifestFileEntry> & ManifestFileContent::getFiles() const
 {

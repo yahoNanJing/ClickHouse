@@ -33,6 +33,9 @@ struct FieldRef : public Field
     ColumnsWithTypeAndName * columns = nullptr;
     size_t row_idx = 0;
     size_t column_idx = 0;
+
+    std::string toJson() const;
+    void fromJson(const std::string & json_str);
 };
 
 /// Range with open or closed ends; possibly unbounded.
@@ -114,6 +117,9 @@ public:
     bool nearByWith(const Range & r) const;
 
     String toString() const;
+
+    std::string toJson() const;
+    void fromJson(const std::string & json_str);
 };
 
 Range intersect(const Range & a, const Range & b);

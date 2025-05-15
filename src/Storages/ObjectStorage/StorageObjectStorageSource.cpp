@@ -21,6 +21,7 @@
 #include <Storages/ObjectStorage/StorageObjectStorage.h>
 #include <Storages/ObjectStorage/DataLakes/DeltaLake/ObjectInfoWithPartitionColumns.h>
 #include <Storages/ObjectStorage/DataLakes/DataLakeConfiguration.h>
+#include <Storages/ObjectStorage/ObjectInfoFactory.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Common/parseGlobs.h>
 #include <Disks/IO/CachedOnDiskReadBufferFromFile.h>
@@ -545,7 +546,7 @@ StorageObjectStorageSource::ReaderHolder StorageObjectStorageSource::createReade
         return std::make_shared<ExtractColumnsTransform>(header, read_from_format_info.requested_columns);
     });
 
-    if (configuration->hasDataTransformer())
+    if (configuration->hasDataTransformer(object_info))
     {
         builder.addSimpleTransform([&](const Block & header)
         {
@@ -949,7 +950,7 @@ StorageObjectStorageSource::ReadTaskIterator::ReadTaskIterator(
         if (key.empty())
             continue;
 
-        buffer.emplace_back(std::make_shared<ObjectInfo>(key, std::nullopt));
+        buffer.emplace_back(getObjectInfoFromJsonStr(key));
     }
 }
 
@@ -962,7 +963,7 @@ StorageObjectStorage::ObjectInfoPtr StorageObjectStorageSource::ReadTaskIterator
         if (key.empty())
             return nullptr;
 
-        return std::make_shared<ObjectInfo>(key, std::nullopt);
+        return getObjectInfoFromJsonStr(key);
     }
 
     return buffer[current_index];
