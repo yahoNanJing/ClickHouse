@@ -938,9 +938,11 @@ std::shared_ptr<ISimpleTransform> IcebergMetadata::getDataTransformer(
                 delete_object_format,
                 delete_object_compression_method);
         }
-
-        delete_object_format = configuration_ptr->format;
-        delete_object_compression_method = configuration_ptr->compression_method;
+        else
+        {
+            delete_object_format = configuration_ptr->format;
+            delete_object_compression_method = configuration_ptr->compression_method;
+        }
     }
 
     return std::make_shared<IcebergBitmapPositionDeleteTransform>(
