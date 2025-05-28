@@ -105,6 +105,11 @@ StorageObjectStorage::StorageObjectStorage(
     bool failed_init = false;
     auto do_init = [&]()
     {
+        if (distributed_processing)
+        {
+            // No need to initialize configuration on distributed processing
+            return;
+        }
         try
         {
             if (configuration->hasExternalDynamicMetadata())
@@ -146,7 +151,9 @@ StorageObjectStorage::StorageObjectStorage(
     if (!failed_init
         && sample_path.empty()
         && context->getSettingsRef()[Setting::use_hive_partitioning]
-        && !configuration->withPartitionWildcard())
+        && !configuration->withPartitionWildcard()
+        // No need to get sample path on distributed processing which is also not feasible due to no initialization of configuration
+        && !distributed_processing)
     {
         if (do_lazy_init)
             do_init();
