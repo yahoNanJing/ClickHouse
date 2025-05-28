@@ -28,4 +28,6 @@ private:
 void registerSimpleObjectInfo(ObjectInfoFactory & factory);
 void registerIcebergObjectInfo(ObjectInfoFactory & factory);
 
+std::shared_ptr<RelativePathWithMetadata> getObjectInfoFromJsonStr(const std::string & json_str);
+
 }

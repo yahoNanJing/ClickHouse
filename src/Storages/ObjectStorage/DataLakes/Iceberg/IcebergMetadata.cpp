@@ -194,7 +194,13 @@ IcebergMetadata::IcebergMetadata(
     , format_version(format_version_)
     , relevant_snapshot_schema_id(-1)
     , table_location(last_metadata_object->getValue<String>(TABLE_LOCATION_FIELD))
+    , distributed_processing(getContext()->getClientInfo().query_kind == ClientInfo::QueryKind::SECONDARY_QUERY)
 {
+    // For the worker nodes, we don't need to initialize and update the iceberg metadata
+    if (distributed_processing)
+    {
+        return;
+    }
     updateState(context_, true);
 }
 
@@ -618,6 +624,11 @@ void IcebergMetadata::updateState(const ContextPtr & local_context, bool metadat
 
 std::optional<Int32> IcebergMetadata::getSchemaVersionByFileIfOutdated(String data_path) const
 {
+    // If we are in distributed processing mode, we do not need to check the schema version
+    if (distributed_processing)
+    {
+        return std::nullopt;
+    }
     auto manifest_file_it = manifest_file_by_data_file.find(data_path);
     if (manifest_file_it == manifest_file_by_data_file.end())
     {

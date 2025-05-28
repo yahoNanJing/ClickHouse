@@ -111,8 +111,6 @@ struct RelativePathWithMetadata : public std::enable_shared_from_this<RelativePa
     virtual std::string toJsonWithType() const;
 };
 
-std::shared_ptr<RelativePathWithMetadata> getObjectInfoFromJsonStr(const std::string & json_str);
-
 struct ObjectKeyWithMetadata
 {
     ObjectStorageKey key;

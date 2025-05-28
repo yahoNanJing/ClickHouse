@@ -151,6 +151,8 @@ private:
     Int64 relevant_snapshot_id{-1};
     String table_location;
 
+    const bool distributed_processing;
+
     mutable std::optional<std::vector<Iceberg::ManifestFileEntry>> cached_unprunned_files_for_last_processed_snapshot;
     mutable std::optional<std::vector<Iceberg::ManifestFileEntry>> cached_unprunned_position_deletes_files_for_last_processed_snapshot;
 
